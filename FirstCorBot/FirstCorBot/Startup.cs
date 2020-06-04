@@ -14,6 +14,7 @@ using Microsoft.Bot.Builder;
 using Microsoft.Bot.Builder.Integration.AspNet.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.IdentityModel.Clients.ActiveDirectory;
 
 namespace ItAuth.Service
 {
@@ -23,13 +24,17 @@ namespace ItAuth.Service
         public void ConfigureServices(IServiceCollection services)
         {
             services.AddControllers().AddNewtonsoftJson();
+            services.AddHttpClient();
+
             services.AddSingleton<IBotFrameworkHttpAdapter, AdapterWithErrorHandler>();
             services.AddSingleton<IStorage, MemoryStorage>();
 
             services.AddSingleton<UserState>();
             services.AddSingleton<ConversationState>();
             services.AddSingleton<LuisIntentRecognizer>();
+            services.AddSingleton<QnARecognizer>(); 
             services.AddSingleton<ItAuthDialog>();
+            
             services.AddSingleton<MainDialog>();
 
             // Create the bot as a transient. In this case the ASP Controller is expecting an IBot.

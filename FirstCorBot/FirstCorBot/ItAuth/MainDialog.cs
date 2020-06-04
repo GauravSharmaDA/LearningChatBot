@@ -3,6 +3,9 @@
 //
 // Generated with Bot Builder V4 SDK Template for Visual Studio CoreBot v4.9.2
 
+using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using FirstCorBot;
@@ -55,17 +58,37 @@ namespace ItAuth.Service.Dialogs
         {
             if (stepContext.Result is ItAuthFlow result)
             {
-                
                 var messageText = result.Intent == OperationIntent.LogAccessRequest ? 
                     $"We are have logged a {result.Access} request for server {result.ServerName}." : 
                     $"Ticket {result.SelectedTicketNumber} is waiting in queue. Should be processed in next 30 minutes";
                 
-                var message = MessageFactory.Text(messageText, messageText, InputHints.IgnoringInput);
+                var message = MessageFactory.Text(messageText, messageText);
+                
+                message.SuggestedActions = new SuggestedActions()
+                {
+                    Actions = new List<CardAction>()
+                    {
+                        new CardAction() { Title = "Red", Type = ActionTypes.ImBack, Value = "Red" },
+                        new CardAction() { Title = "Yellow", Type = ActionTypes.ImBack, Value = "Yellow" },
+                        new CardAction() { Title = "Blue", Type = ActionTypes.ImBack, Value = "Blue" },
+                    },
+                };
+
                 await stepContext.Context.SendActivityAsync(message, cancellationToken);
             }
 
             var promptMessage = "What else can I do for you?";
             return await stepContext.ReplaceDialogAsync(InitialDialogId, promptMessage, cancellationToken);
+        }
+
+        private Attachment GetInlineAttachment()
+        {
+            return new Attachment
+            {
+                Name = @"Resources\architecture-resize.png",
+                ContentType = "image/png",
+                ContentUrl = "https://docs.microsoft.com/en-us/bot-framework/media/how-it-works/architecture-resize.png",
+            };
         }
     }
 }

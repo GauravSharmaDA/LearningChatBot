@@ -5,8 +5,12 @@ using System.Threading.Tasks;
 using FirstCorBot.Dialogs;
 using Microsoft.Azure.CognitiveServices.Language.LUIS.Runtime.Models;
 using Microsoft.Bot.Builder;
+using Microsoft.Bot.Builder.AI.QnA;
+using Microsoft.Bot.Builder.AI.QnA.Dialogs;
+using Microsoft.Bot.Builder.AI.QnA.Recognizers;
 using Microsoft.Bot.Builder.Dialogs;
 using Microsoft.Bot.Builder.Dialogs.Choices;
+using Microsoft.Bot.Schema;
 using Newtonsoft.Json;
 
 namespace ItAuth.Service.ItAuth
@@ -14,11 +18,15 @@ namespace ItAuth.Service.ItAuth
     public class ItAuthDialog : CancelAndHelpDialog
     {
         private readonly LuisIntentRecognizer _luisRecognizer;
+        private readonly QnARecognizer _qnAMakerRecognizer;
+
         public static string GreetTheCustomer = "Hi, How can I help you today?";
         public static string RepeatMessage = "Sorry, I didn't get that. Can you please try a different word?";
-        public ItAuthDialog(LuisIntentRecognizer luisRecognizer) : base(nameof(ItAuthDialog))
+        public ItAuthDialog(LuisIntentRecognizer luisRecognizer, QnARecognizer qnAMakerRecognizer) : base(nameof(ItAuthDialog))
         {
             _luisRecognizer = luisRecognizer;
+            _qnAMakerRecognizer = qnAMakerRecognizer;
+
             AddDialog(new TextPrompt(nameof(TextPrompt)));
             AddDialog(new CreateTicketDialog(nameof(CreateTicketDialog)));
             AddDialog(new EnquireTicketDialog(nameof(EnquireTicketDialog)));
@@ -51,19 +59,35 @@ namespace ItAuth.Service.ItAuth
 
         private async Task<DialogTurnResult> SaveInitialIntent(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
+            var options = new QnAMakerOptions { Top = 1 };
+            var response = await _qnAMakerRecognizer.GetAnswersAsync(stepContext.Context, options);
+            if (response != null && response.Length > 0)
+            {
+                var suggestedReply = MessageFactory.Text(response[0].Answer);
+                suggestedReply.SuggestedActions = new SuggestedActions();
+                suggestedReply.SuggestedActions.Actions = new List<CardAction>();
+                for (int i = 0; i < response[0].Context.Prompts.Length; i++)
+                {
+                    var promptText = response[0].Context.Prompts[i].DisplayText;
+                    suggestedReply.SuggestedActions.Actions.Add(new CardAction() { Title = promptText, Type = ActionTypes.ImBack, Value = promptText });
+                }
+                stepContext.ActiveDialog.State["stepIndex"] = (int)stepContext.ActiveDialog.State["stepIndex"] - 1;
+                await stepContext.Context.SendActivityAsync(suggestedReply, cancellationToken);
+                return await InitialStep(stepContext, cancellationToken);
+            }
+            else
+            {
+                var luisResult = await _luisRecognizer.RecognizeAsync(stepContext.Context, cancellationToken);
+                if (luisResult.Intents.ContainsKey("LogTicketIntent"))
+                    return await stepContext.BeginDialogAsync(nameof(CreateTicketDialog), stepContext.Options, cancellationToken);
+                if (luisResult.Intents.ContainsKey("EnquireTicket"))
+                    return await stepContext.BeginDialogAsync(nameof(EnquireTicketDialog), stepContext.Options, cancellationToken);
+            }
 
-            var luisResult = await _luisRecognizer.RecognizeAsync(stepContext.Context, cancellationToken);
-
-
-            if(luisResult.Intents.ContainsKey("LogTicketIntent"))
-                return await stepContext.BeginDialogAsync(nameof(CreateTicketDialog), stepContext.Options, cancellationToken);
-            if (luisResult.Intents.ContainsKey("EnquireTicket"))
-                return await stepContext.BeginDialogAsync(nameof(EnquireTicketDialog), stepContext.Options, cancellationToken);
-
-            stepContext.ActiveDialog.State["stepIndex"] = (int)stepContext.ActiveDialog.State["stepIndex"] - 1;
+            
             GreetTheCustomer = RepeatMessage;
+            stepContext.ActiveDialog.State["stepIndex"] = (int)stepContext.ActiveDialog.State["stepIndex"] - 1;
             return await InitialStep(stepContext, cancellationToken);
-             
         }
 
         private async Task<DialogTurnResult> FinalStep(WaterfallStepContext stepContext, CancellationToken cancellationToken)
